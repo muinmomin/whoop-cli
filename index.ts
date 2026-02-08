@@ -57,36 +57,6 @@ interface DailyStatsOutput {
   };
 }
 
-interface RangeStatsOutput {
-  startDate: string;
-  endDate: string;
-  days: number;
-  sleep: {
-    avgScore: number | null;
-    minScore: number | null;
-    maxScore: number | null;
-  };
-  rhr: {
-    avg: number | null;
-    min: number | null;
-    max: number | null;
-  };
-  steps: {
-    avg: number | null;
-    min: number | null;
-    max: number | null;
-  };
-  workouts: {
-    total: number;
-    types: string[];
-  };
-  healthspan: {
-    whoopAge: number | null;
-    yearsDifference: number | null;
-    paceOfAging: number | null;
-  };
-}
-
 interface KeyStat {
   current: string | null;
   thirtyDay: string | null;
@@ -100,6 +70,7 @@ class WhoopClient {
   private readonly email: string;
   private readonly password: string;
   private tokenData: TokenData | null = null;
+  private loginInFlight: Promise<TokenData> | null = null;
   private readonly clientId = "";
 
   constructor(input: { email: string; password: string }) {
@@ -109,6 +80,16 @@ class WhoopClient {
   }
 
   async login(): Promise<TokenData> {
+    if (!this.loginInFlight) {
+      this.loginInFlight = this.performLogin().finally(() => {
+        this.loginInFlight = null;
+      });
+    }
+
+    return this.loginInFlight;
+  }
+
+  private async performLogin(): Promise<TokenData> {
     const url = `${this.baseUrl}/auth-service/v3/whoop`;
     const response = await fetch(url, {
       method: "POST",
@@ -184,10 +165,11 @@ class WhoopClient {
     let retried = false;
 
     while (true) {
-      await this.ensureValidToken();
+      const headers = await this.getHeaders();
+      const requestToken = headers.Authorization.slice("Bearer ".length);
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: "GET",
-        headers: await this.getHeaders(),
+        headers,
       });
 
       if (response.ok) {
@@ -196,7 +178,9 @@ class WhoopClient {
 
       if (response.status === 401 && !retried) {
         retried = true;
-        await this.login();
+        if (this.tokenData?.accessToken === requestToken) {
+          await this.login();
+        }
         continue;
       }
 
@@ -281,30 +265,6 @@ function ensureDate(value: string): string {
     throw new Error(`Invalid date "${value}". Expected YYYY-MM-DD`);
   }
   return value;
-}
-
-function ensureDateRange(startDate: string, endDate: string): void {
-  const start = new Date(`${startDate}T00:00:00Z`).getTime();
-  const end = new Date(`${endDate}T00:00:00Z`).getTime();
-  if (Number.isNaN(start) || Number.isNaN(end)) {
-    throw new Error("Invalid date range");
-  }
-  if (start > end) {
-    throw new Error(`Invalid range: ${startDate} is after ${endDate}`);
-  }
-}
-
-function toDateList(startDate: string, endDate: string): string[] {
-  const dates: string[] = [];
-  const cursor = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T00:00:00Z`);
-
-  while (cursor.getTime() <= end.getTime()) {
-    dates.push(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-
-  return dates;
 }
 
 function normalizeWhoopTimestamp(raw?: string | null): string | null {
@@ -855,58 +815,6 @@ function formatDailyStatsText(output: DailyStatsOutput): string {
   return lines.join("\n");
 }
 
-function formatRangeStatsText(output: RangeStatsOutput): string {
-  const lines: string[] = [];
-  lines.push(
-    `WHOOP Stats (${formatHumanDate(output.startDate)} -> ${formatHumanDate(output.endDate)})`
-  );
-  lines.push(`Timezone: ${MACHINE_TIME_ZONE}`);
-  lines.push(`Days: ${output.days}`);
-  lines.push("");
-
-  lines.push("Sleep");
-  lines.push(`  Avg Score: ${formatNumber(output.sleep.avgScore)}`);
-  lines.push(`  Min Score: ${formatNumber(output.sleep.minScore)}`);
-  lines.push(`  Max Score: ${formatNumber(output.sleep.maxScore)}`);
-  lines.push("");
-
-  lines.push("RHR");
-  lines.push(`  Avg: ${formatNumber(output.rhr.avg)}`);
-  lines.push(`  Min: ${formatNumber(output.rhr.min)}`);
-  lines.push(`  Max: ${formatNumber(output.rhr.max)}`);
-  lines.push("");
-
-  lines.push("Steps");
-  lines.push(`  Avg: ${formatNumber(output.steps.avg)}`);
-  lines.push(`  Min: ${formatNumber(output.steps.min)}`);
-  lines.push(`  Max: ${formatNumber(output.steps.max)}`);
-  lines.push("");
-
-  lines.push("Workouts");
-  lines.push(`  Total: ${output.workouts.total}`);
-  lines.push(`  Types: ${output.workouts.types.length > 0 ? output.workouts.types.join(", ") : "none"}`);
-  lines.push("");
-
-  lines.push("Healthspan (end date snapshot)");
-  lines.push(`  WHOOP Age: ${formatNumber(output.healthspan.whoopAge, 1)}`);
-  lines.push(`  Years Difference: ${formatNumber(output.healthspan.yearsDifference, 1)}`);
-  lines.push(`  Pace of Aging: ${output.healthspan.paceOfAging === null ? "n/a" : `${output.healthspan.paceOfAging.toFixed(1)}x`}`);
-
-  return lines.join("\n");
-}
-
-function numericSummary(values: number[]): { avg: number | null; min: number | null; max: number | null } {
-  if (values.length === 0) {
-    return { avg: null, min: null, max: null };
-  }
-  const sum = values.reduce((acc, value) => acc + value, 0);
-  return {
-    avg: Math.round(sum / values.length),
-    min: Math.min(...values),
-    max: Math.max(...values),
-  };
-}
-
 async function buildDailyStats(client: WhoopClient, date: string): Promise<DailyStatsOutput> {
   const [overview, sleep, strain, healthspan, sleepLastNight] = (await Promise.all([
     client.getHome(date),
@@ -975,76 +883,6 @@ async function buildDailyStats(client: WhoopClient, date: string): Promise<Daily
   };
 }
 
-async function buildRangeStats(client: WhoopClient, startDate: string, endDate: string): Promise<RangeStatsOutput> {
-  const dates = toDateList(startDate, endDate);
-  const overviews = (await Promise.all(dates.map((date) => client.getHome(date)))) as any[];
-  const healthspan = (await client.getHealthspan(endDate)) as any;
-
-  const sleepScores: number[] = [];
-  const rhrValues: number[] = [];
-  const stepValues: number[] = [];
-  let workoutTotal = 0;
-  const workoutTypes = new Set<string>();
-
-  for (const overview of overviews) {
-    const keyStats = getKeyStats(overview);
-    const sleepScore = parseDisplayInt(keyStats.SLEEP_PERFORMANCE?.current);
-    const rhr = parseDisplayInt(keyStats.RHR?.current);
-    const steps = parseDisplayInt(keyStats.STEPS?.current);
-
-    if (sleepScore !== null) {
-      sleepScores.push(sleepScore);
-    }
-    if (rhr !== null) {
-      rhrValues.push(rhr);
-    }
-    if (steps !== null) {
-      stepValues.push(steps);
-    }
-
-    const dailyWorkouts = buildWorkouts(overview, null);
-    workoutTotal += dailyWorkouts.length;
-    for (const workout of dailyWorkouts) {
-      workoutTypes.add(workout.name);
-    }
-  }
-
-  const sleepSummary = numericSummary(sleepScores);
-  const rhrSummary = numericSummary(rhrValues);
-  const stepsSummary = numericSummary(stepValues);
-  const health = healthspanSummary(healthspan);
-
-  return {
-    startDate,
-    endDate,
-    days: dates.length,
-    sleep: {
-      avgScore: sleepSummary.avg,
-      minScore: sleepSummary.min,
-      maxScore: sleepSummary.max,
-    },
-    rhr: {
-      avg: rhrSummary.avg,
-      min: rhrSummary.min,
-      max: rhrSummary.max,
-    },
-    steps: {
-      avg: stepsSummary.avg,
-      min: stepsSummary.min,
-      max: stepsSummary.max,
-    },
-    workouts: {
-      total: workoutTotal,
-      types: [...workoutTypes].sort(),
-    },
-    healthspan: {
-      whoopAge: health.whoopAge,
-      yearsDifference: health.yearsDifference,
-      paceOfAging: health.paceOfAging,
-    },
-  };
-}
-
 async function runAuth(tokens: string[]): Promise<void> {
   const flags = parseFlags(tokens);
   const allowedFlags = new Set(["help"]);
@@ -1067,7 +905,7 @@ async function runAuth(tokens: string[]): Promise<void> {
 
 async function runStats(tokens: string[]): Promise<void> {
   const flags = parseFlags(tokens);
-  const allowedFlags = new Set(["help", "date", "startDate", "endDate", "text", "json"]);
+  const allowedFlags = new Set(["help", "date", "text", "json"]);
   for (const key of Object.keys(flags)) {
     if (!allowedFlags.has(key)) {
       throw new Error(`Unknown flag "--${key}". Run "bun run stats --help"`);
@@ -1087,40 +925,11 @@ async function runStats(tokens: string[]): Promise<void> {
   const outputFormat: "json" | "text" = wantsText ? "text" : "json";
 
   const dateFlag = getFlagString(flags, "date");
-  const startDateFlag = getFlagString(flags, "startDate");
-  const endDateFlag = getFlagString(flags, "endDate");
-
   if (hasFlag(flags, "date") && !dateFlag) {
     throw new Error('The "--date" flag requires a value in YYYY-MM-DD format.');
   }
-  if (hasFlag(flags, "startDate") && !startDateFlag) {
-    throw new Error('The "--startDate" flag requires a value in YYYY-MM-DD format.');
-  }
-  if (hasFlag(flags, "endDate") && !endDateFlag) {
-    throw new Error('The "--endDate" flag requires a value in YYYY-MM-DD format.');
-  }
-
-  if (dateFlag && (startDateFlag || endDateFlag)) {
-    throw new Error("Use either --date OR --startDate/--endDate");
-  }
-  if ((startDateFlag && !endDateFlag) || (!startDateFlag && endDateFlag)) {
-    throw new Error("Both --startDate and --endDate are required for range mode");
-  }
 
   const client = createClientFromEnv();
-
-  if (startDateFlag && endDateFlag) {
-    const startDate = ensureDate(startDateFlag);
-    const endDate = ensureDate(endDateFlag);
-    ensureDateRange(startDate, endDate);
-    const output = await buildRangeStats(client, startDate, endDate);
-    if (outputFormat === "text") {
-      console.log(formatRangeStatsText(output));
-    } else {
-      console.log(JSON.stringify(output, null, 2));
-    }
-    return;
-  }
 
   const date = ensureDate(dateFlag ?? getDefaultDate());
   const output = await buildDailyStats(client, date);
@@ -1143,7 +952,7 @@ function printHelp(): void {
 
 Usage:
   whoop auth
-  whoop stats --date YYYY-MM-DD [--text|--json]
+  whoop stats [--date YYYY-MM-DD] [--text|--json]
 
 Commands:
   auth    Validate WHOOP credentials by logging in and printing token expiry
@@ -1162,7 +971,7 @@ Options:
 
 function printStatsHelp(): void {
   console.log(`Usage:
-  whoop stats --date YYYY-MM-DD
+  whoop stats [--date YYYY-MM-DD]
 
 Options:
   --text               Human-readable output
