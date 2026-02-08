@@ -13,6 +13,15 @@ brew install muinmomin/whoop-cli/whoop
 
 Current binary target: macOS arm64 (Apple Silicon).
 
+## Updating
+
+To update to the latest released version:
+
+```bash
+brew update
+brew upgrade muinmomin/whoop-cli/whoop
+```
+
 ## Usage
 
 Required environment variables:
