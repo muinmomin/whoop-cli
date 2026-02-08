@@ -4,24 +4,27 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (example: v0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+env:
+  TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-13
-            asset_name: whoop-darwin-x86_64
-          - os: macos-14
-            asset_name: whoop-darwin-arm64
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG_NAME }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -38,16 +41,16 @@ jobs:
         run: |
           mkdir -p dist
           bun build --compile ./index.ts --outfile ./dist/whoop
-          tar -C dist -czf "./dist/${{ matrix.asset_name }}.tar.gz" whoop
-          shasum -a 256 "./dist/${{ matrix.asset_name }}.tar.gz" | awk '{print $1}' > "./dist/${{ matrix.asset_name }}.sha256"
+          tar -C dist -czf ./dist/whoop-darwin-arm64.tar.gz whoop
+          shasum -a 256 ./dist/whoop-darwin-arm64.tar.gz | awk '{print $1}' > ./dist/whoop-darwin-arm64.sha256
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
+          name: release-assets
           path: |
-            dist/${{ matrix.asset_name }}.tar.gz
-            dist/${{ matrix.asset_name }}.sha256
+            dist/whoop-darwin-arm64.tar.gz
+            dist/whoop-darwin-arm64.sha256
           if-no-files-found: error
 
   release:
@@ -57,13 +60,75 @@ jobs:
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
+          name: release-assets
           path: dist
-          merge-multiple: true
 
-      - name: Create GitHub Release
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG_NAME }}
           files: |
             dist/*.tar.gz
             dist/*.sha256
           generate_release_notes: true
+
+  update_formula:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: dist
+
+      - name: Checkout Default Branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update Formula
+        run: |
+          set -euo pipefail
+
+          VERSION="${TAG_NAME#v}"
+          ARM64_SHA="$(tr -d '[:space:]' < dist/whoop-darwin-arm64.sha256)"
+
+          mkdir -p Formula
+
+          cat > Formula/whoop.rb <<EOF
+          class Whoop < Formula
+            desc "Simple WHOOP CLI for auth and daily stats"
+            homepage "https://github.com/muinmomin/whoop-cli"
+            version "${VERSION}"
+
+            on_macos do
+              depends_on arch: :arm64
+              url "https://github.com/muinmomin/whoop-cli/releases/download/v#{version}/whoop-darwin-arm64.tar.gz"
+              sha256 "${ARM64_SHA}"
+            end
+
+            def install
+              bin.install "whoop"
+            end
+
+            test do
+              assert_match "whoop-cli", shell_output("#{bin}/whoop --help")
+            end
+          end
+          EOF
+
+      - name: Commit Formula Update
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- Formula/whoop.rb; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/whoop.rb
+          git commit -m "chore(homebrew): update formula for ${TAG_NAME}"
+          git push origin HEAD:main
