@@ -23,6 +23,9 @@ interface DailyStatsOutput {
     hoursNeeded: string | null;
     hours30dAvg: string | null;
     efficiency: number | null;
+    efficiency30dAvg: number | null;
+    consistency: number | null;
+    consistency30dAvg: number | null;
     rhr: {
       value: number | null;
       avg30d: number | null;
@@ -47,6 +50,10 @@ interface DailyStatsOutput {
     value: number | null;
     avg30d: number | null;
   };
+  vo2Max: {
+    value: number | null;
+    avg30d: number | null;
+  };
   workouts: Array<{
     name: string;
     start: string | null;
@@ -57,6 +64,11 @@ interface DailyStatsOutput {
     whoopAge: number | null;
     yearsDifference: number | null;
     paceOfAging: number | null;
+    dateRange: string | null;
+    previous: {
+      whoopAge: number | null;
+      paceOfAging: number | null;
+    };
     nextUpdateIn: string | null;
   };
 }
@@ -439,7 +451,22 @@ function getKeyStats(overview: any): Record<string, KeyStat> {
 }
 
 function getWeightStat(keyStats: Record<string, KeyStat>): KeyStat | null {
-  const preferredKeys = ["WEIGHT", "BODY_WEIGHT", "WEIGHT_LBS", "WEIGHT_KG", "BODY_MASS"];
+  return getKeyStatByPreference(
+    keyStats,
+    ["WEIGHT", "BODY_WEIGHT", "WEIGHT_LBS", "WEIGHT_KG", "BODY_MASS"],
+    ["WEIGHT"]
+  );
+}
+
+function getVo2MaxStat(keyStats: Record<string, KeyStat>): KeyStat | null {
+  return getKeyStatByPreference(keyStats, ["VO2_MAX", "VO2MAX"], ["VO2"]);
+}
+
+function getKeyStatByPreference(
+  keyStats: Record<string, KeyStat>,
+  preferredKeys: string[],
+  fallbackNeedles: string[]
+): KeyStat | null {
   for (const key of preferredKeys) {
     if (keyStats[key]) {
       return keyStats[key];
@@ -447,7 +474,8 @@ function getWeightStat(keyStats: Record<string, KeyStat>): KeyStat | null {
   }
 
   for (const [trendKey, stat] of Object.entries(keyStats)) {
-    if (trendKey.toUpperCase().includes("WEIGHT")) {
+    const upper = trendKey.toUpperCase();
+    if (fallbackNeedles.some((needle) => upper.includes(needle))) {
       return stat;
     }
   }
@@ -607,46 +635,59 @@ function getSleepScore(sleep: any): number | null {
 }
 
 function getSleepEfficiency(sleep: any): number | null {
-  if (!Array.isArray(sleep?.sections)) {
-    return null;
-  }
-  for (const section of sleep.sections) {
-    if (!Array.isArray(section.items)) {
-      continue;
-    }
-    for (const item of section.items) {
-      if (item?.type !== "CONTRIBUTORS_TILE" || !Array.isArray(item?.content?.metrics)) {
-        continue;
-      }
-      for (const metric of item.content.metrics) {
-        if (metric?.id === "CONTRIBUTORS_TILE_IN_SLEEP_EFFICIENCY") {
-          return parseDisplayInt(metric?.status);
-        }
-      }
-    }
-  }
-  return null;
+  return getSleepContributorMetric(sleep, [
+    "CONTRIBUTORS_TILE_IN_SLEEP_EFFICIENCY",
+    "CONTRIBUTORS_TILE_SLEEP_EFFICIENCY",
+  ]);
+}
+
+function getSleepConsistency(sleep: any): number | null {
+  return getSleepContributorMetric(sleep, [
+    "CONTRIBUTORS_TILE_SLEEP_CONSISTENCY",
+    "CONTRIBUTORS_TILE_IN_SLEEP_CONSISTENCY",
+  ]);
 }
 
 function getSleepHoursVsNeeded(sleep: any): number | null {
+  return getSleepContributorMetric(sleep, [
+    "CONTRIBUTORS_TILE_HOURS_V_NEEDED",
+    "CONTRIBUTORS_TILE_HOURS_VS_NEEDED",
+  ]);
+}
+
+function getSleepContributorMetric(sleep: any, metricIds: string[]): number | null {
+  const content = getSleepContributorsTileContent(sleep);
+  if (!content || !Array.isArray(content.metrics)) {
+    return null;
+  }
+
+  const metricIdSet = new Set(metricIds);
+  for (const metric of content.metrics) {
+    if (metricIdSet.has(metric?.id)) {
+      return parseDisplayInt(metric?.status);
+    }
+  }
+
+  return null;
+}
+
+function getSleepContributorsTileContent(sleep: any): any | null {
   if (!Array.isArray(sleep?.sections)) {
     return null;
   }
+
   for (const section of sleep.sections) {
     if (!Array.isArray(section.items)) {
       continue;
     }
     for (const item of section.items) {
-      if (item?.type !== "CONTRIBUTORS_TILE" || !Array.isArray(item?.content?.metrics)) {
+      if (item?.type !== "CONTRIBUTORS_TILE" || !item?.content) {
         continue;
       }
-      for (const metric of item.content.metrics) {
-        if (metric?.id === "CONTRIBUTORS_TILE_HOURS_V_NEEDED") {
-          return parseDisplayInt(metric?.status);
-        }
-      }
+      return item.content;
     }
   }
+
   return null;
 }
 
@@ -715,22 +756,46 @@ function healthspanSummary(healthspan: any): {
   whoopAge: number | null;
   yearsDifference: number | null;
   paceOfAging: number | null;
+  dateRange: string | null;
+  previous: {
+    whoopAge: number | null;
+    paceOfAging: number | null;
+  };
   nextUpdateIn: string | null;
 } {
-  const styleValues = healthspan?.unlocked_content?.whoop_age_amoeba?.style_values;
+  const unlocked = healthspan?.unlocked_content;
+  const current = unlocked?.whoop_age_amoeba;
+  const currentStyle = current?.style_values;
+  const previous = unlocked?.previous_whoop_age_amoeba;
+  const previousStyle = previous?.style_values;
+
   return {
     whoopAge:
-      typeof styleValues?.age === "number"
-        ? Number(styleValues.age.toFixed(1))
-        : parseDisplayNumber(healthspan?.unlocked_content?.whoop_age_amoeba?.age_value_display),
+      typeof currentStyle?.age === "number"
+        ? Number(currentStyle.age.toFixed(1))
+        : parseDisplayNumber(current?.age_value_display),
     yearsDifference:
-      typeof styleValues?.years_difference === "number"
-        ? Number(styleValues.years_difference.toFixed(1))
+      typeof currentStyle?.years_difference === "number"
+        ? Number(currentStyle.years_difference.toFixed(1))
         : null,
     paceOfAging:
-      typeof styleValues?.pace_of_aging === "number"
-        ? Number(styleValues.pace_of_aging.toFixed(1))
-        : parseDisplayNumber(healthspan?.unlocked_content?.whoop_age_amoeba?.pace_of_aging_display),
+      typeof currentStyle?.pace_of_aging === "number"
+        ? Number(currentStyle.pace_of_aging.toFixed(1))
+        : parseDisplayNumber(current?.pace_of_aging_display),
+    dateRange:
+      typeof unlocked?.date_picker?.current_date_range_display === "string"
+        ? unlocked.date_picker.current_date_range_display
+        : null,
+    previous: {
+      whoopAge:
+        typeof previousStyle?.age === "number"
+          ? Number(previousStyle.age.toFixed(1))
+          : parseDisplayNumber(previous?.age_value_display),
+      paceOfAging:
+        typeof previousStyle?.pace_of_aging === "number"
+          ? Number(previousStyle.pace_of_aging.toFixed(1))
+          : parseDisplayNumber(previous?.pace_of_aging_display),
+    },
     nextUpdateIn: parseNextUpdateIn(
       typeof healthspan?.navigation_subtitle === "string" ? healthspan.navigation_subtitle : null
     ),
@@ -799,7 +864,12 @@ function formatDailyStatsText(output: DailyStatsOutput): string {
   lines.push(`  Hours vs Needed: ${formatPercent(output.sleep.hoursVsNeeded)}`);
   lines.push(`  Hours Needed: ${output.sleep.hoursNeeded ?? "n/a"}`);
   lines.push(`  Hours 30d Avg: ${output.sleep.hours30dAvg ?? "n/a"}`);
-  lines.push(`  Efficiency: ${formatPercent(output.sleep.efficiency)}`);
+  lines.push(
+    `  Efficiency: ${formatPercent(output.sleep.efficiency)} (30d avg: ${formatPercent(output.sleep.efficiency30dAvg)})`
+  );
+  lines.push(
+    `  Consistency: ${formatPercent(output.sleep.consistency)} (30d avg: ${formatPercent(output.sleep.consistency30dAvg)})`
+  );
   lines.push(`  RHR: ${formatNumber(output.sleep.rhr.value)} (30d avg: ${formatNumber(output.sleep.rhr.avg30d)})`);
   lines.push(`  HRV: ${formatNumber(output.sleep.hrv.value)} (30d avg: ${formatNumber(output.sleep.hrv.avg30d)})`);
   lines.push(`  Bed Time: ${formatHumanDateTime(output.sleep.bedTime)}`);
@@ -819,6 +889,11 @@ function formatDailyStatsText(output: DailyStatsOutput): string {
   lines.push(`  Avg 30d: ${formatNumber(output.weight.avg30d, 1)}`);
   lines.push("");
 
+  lines.push("VO2 Max");
+  lines.push(`  Value: ${formatNumber(output.vo2Max.value, 1)}`);
+  lines.push(`  Avg 30d: ${formatNumber(output.vo2Max.avg30d, 1)}`);
+  lines.push("");
+
   lines.push("Workouts");
   if (output.workouts.length === 0) {
     lines.push("  None");
@@ -833,9 +908,16 @@ function formatDailyStatsText(output: DailyStatsOutput): string {
   lines.push("");
 
   lines.push("Healthspan");
+  lines.push(`  Date Range: ${output.healthspan.dateRange ?? "n/a"}`);
   lines.push(`  WHOOP Age: ${formatNumber(output.healthspan.whoopAge, 1)}`);
+  lines.push(`  Previous WHOOP Age: ${formatNumber(output.healthspan.previous.whoopAge, 1)}`);
   lines.push(`  Years Difference: ${formatNumber(output.healthspan.yearsDifference, 1)}`);
   lines.push(`  Pace of Aging: ${output.healthspan.paceOfAging === null ? "n/a" : `${output.healthspan.paceOfAging.toFixed(1)}x`}`);
+  lines.push(
+    `  Previous Pace of Aging: ${
+      output.healthspan.previous.paceOfAging === null ? "n/a" : `${output.healthspan.previous.paceOfAging.toFixed(1)}x`
+    }`
+  );
   lines.push(`  Next Update In: ${output.healthspan.nextUpdateIn ?? "n/a"}`);
 
   return lines.join("\n");
@@ -869,8 +951,24 @@ async function buildDailyStats(client: WhoopClient, date: string): Promise<Daily
   const weightStat = getWeightStat(keyStats);
   const weightValue = parseDisplayNumber(weightStat?.current);
   const weight30 = parseDisplayNumber(weightStat?.thirtyDay);
+  const vo2MaxStat = getVo2MaxStat(keyStats);
+  const vo2MaxValue = parseDisplayNumber(vo2MaxStat?.current);
+  const vo2Max30 = parseDisplayNumber(vo2MaxStat?.thirtyDay);
   const sleepScore = getSleepScore(sleep);
-  const sleepEfficiency = getSleepEfficiency(sleep);
+  const sleepEfficiencyStat = getKeyStatByPreference(
+    keyStats,
+    ["IN_SLEEP_EFFICIENCY", "SLEEP_EFFICIENCY"],
+    ["SLEEP_EFFICIENCY"]
+  );
+  const sleepConsistencyStat = getKeyStatByPreference(
+    keyStats,
+    ["SLEEP_CONSISTENCY"],
+    ["SLEEP_CONSISTENCY"]
+  );
+  const sleepEfficiency = getSleepEfficiency(sleep) ?? parseDisplayInt(sleepEfficiencyStat?.current);
+  const sleepEfficiency30dAvg = parseDisplayInt(sleepEfficiencyStat?.thirtyDay);
+  const sleepConsistency = getSleepConsistency(sleep) ?? parseDisplayInt(sleepConsistencyStat?.current);
+  const sleepConsistency30dAvg = parseDisplayInt(sleepConsistencyStat?.thirtyDay);
   const sleepHoursVsNeeded = getSleepHoursVsNeeded(sleep);
 
   return {
@@ -886,6 +984,9 @@ async function buildDailyStats(client: WhoopClient, date: string): Promise<Daily
       hoursNeeded: sleepNeeded,
       hours30dAvg: sleepHours30,
       efficiency: sleepEfficiency,
+      efficiency30dAvg: sleepEfficiency30dAvg,
+      consistency: sleepConsistency,
+      consistency30dAvg: sleepConsistency30dAvg,
       rhr: {
         value: rhrValue,
         avg30d: rhr30,
@@ -906,11 +1007,17 @@ async function buildDailyStats(client: WhoopClient, date: string): Promise<Daily
       value: weightValue,
       avg30d: weight30,
     },
+    vo2Max: {
+      value: vo2MaxValue,
+      avg30d: vo2Max30,
+    },
     workouts,
     healthspan: {
       whoopAge: health.whoopAge,
       yearsDifference: health.yearsDifference,
       paceOfAging: health.paceOfAging,
+      dateRange: health.dateRange,
+      previous: health.previous,
       nextUpdateIn: health.nextUpdateIn,
     },
   };

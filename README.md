@@ -56,11 +56,12 @@ Notes:
 ## What `stats` Returns
 
 - `day`: start/end
-- `sleep`: score, hours, hours vs needed, hours needed, 30d hours avg, efficiency, RHR (value + 30d avg), HRV (value + 30d avg), bed/wake time, REM/deep/light
+- `sleep`: score, hours, hours vs needed, hours needed, 30d hours avg, efficiency (value + 30d avg), consistency (value + 30d avg), RHR (value + 30d avg), HRV (value + 30d avg), bed/wake time, REM/deep/light
 - `steps`: value + 30d avg
 - `weight`: value + 30d avg
+- `vo2Max`: value + 30d avg (when available in Whoop home key stats)
 - `workouts`: name, start, end, duration
-- `healthspan`: whoop age, years difference, pace of aging, next update
+- `healthspan`: date range, whoop age, previous whoop age, years difference, pace of aging, previous pace of aging, next update
 
 ## Release Flow
 
