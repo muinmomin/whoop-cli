@@ -11,6 +11,7 @@
   "scripts": {
     "start": "bun run index.ts",
     "dev": "bun --watch index.ts",
+    "whoop": "bun run index.ts",
     "auth": "bun run index.ts auth",
     "stats": "bun run index.ts stats",
     "build:binary": "bun build --compile --no-compile-autoload-dotenv ./index.ts --outfile ./dist/whoop",
