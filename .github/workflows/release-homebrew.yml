@@ -76,16 +76,16 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Default Branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
           name: release-assets
           path: dist
-
-      - name: Checkout Default Branch
-        uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Update Formula
         run: |
