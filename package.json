@@ -1,0 +1,20 @@
+{
+  "name": "whoop-cli",
+  "version": "0.1.0",
+  "description": "Simple WHOOP CLI for auth and daily/range stats",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "start": "bun run index.ts",
+    "dev": "bun --watch index.ts",
+    "whoop": "bun run index.ts",
+    "auth": "bun run index.ts auth",
+    "stats": "bun run index.ts stats",
+    "build:binary": "bun build --compile ./index.ts --outfile ./dist/whoop",
+    "typecheck": "tsc --noEmit"
+  }
+}

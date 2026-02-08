@@ -1,0 +1,23 @@
+class Whoop < Formula
+  desc "Simple WHOOP CLI for auth and daily/range stats"
+  homepage "https://github.com/muinmomin/whoop-cli"
+  version "__VERSION__"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://github.com/muinmomin/whoop-cli/releases/download/v#{version}/whoop-darwin-arm64.tar.gz"
+      sha256 "__DARWIN_ARM64_SHA256__"
+    else
+      url "https://github.com/muinmomin/whoop-cli/releases/download/v#{version}/whoop-darwin-x86_64.tar.gz"
+      sha256 "__DARWIN_X86_64_SHA256__"
+    end
+  end
+
+  def install
+    bin.install "whoop"
+  end
+
+  test do
+    assert_match "whoop-cli", shell_output("#{bin}/whoop --help")
+  end
+end

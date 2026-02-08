@@ -1,0 +1,69 @@
+name: Release Homebrew Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13
+            asset_name: whoop-darwin-x86_64
+          - os: macos-14
+            asset_name: whoop-darwin-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Build Binary Tarball
+        run: |
+          mkdir -p dist
+          bun build --compile ./index.ts --outfile ./dist/whoop
+          tar -C dist -czf "./dist/${{ matrix.asset_name }}.tar.gz" whoop
+          shasum -a 256 "./dist/${{ matrix.asset_name }}.tar.gz" | awk '{print $1}' > "./dist/${{ matrix.asset_name }}.sha256"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            dist/${{ matrix.asset_name }}.tar.gz
+            dist/${{ matrix.asset_name }}.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+          generate_release_notes: true
