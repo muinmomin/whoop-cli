@@ -1,12 +1,12 @@
 class Whoop < Formula
   desc "Simple WHOOP CLI for auth and daily stats"
   homepage "https://github.com/muinmomin/whoop-cli"
-  version "0.1.2"
+  version "0.1.3"
 
   on_macos do
     depends_on arch: :arm64
     url "https://github.com/muinmomin/whoop-cli/releases/download/v#{version}/whoop-darwin-arm64.tar.gz"
-    sha256 "1725efbd1812822799ed8a257d075319dbc29d109f05243ed9f403bd6bd362ef"
+    sha256 "9ceb194c058cc31ccf1bc0a208cfe4397c401b6a933f352c891b4a4a6209a884"
   end
 
   def install
