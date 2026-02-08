@@ -254,9 +254,7 @@ function parseFlags(tokens: string[]): Record<string, FlagValue> {
 function readRequiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
-    throw new Error(
-      `Missing ${name}. Create /Users/muin/Developer/whoop-cli/.env from /Users/muin/Developer/whoop-cli/.env.example`
-    );
+    throw new Error(`Missing ${name}. Set it as an environment variable and try again.`);
   }
   return value;
 }
@@ -1172,7 +1170,7 @@ Options:
 
 Notes:
   - If no flags are provided, --date defaults to local today
-  - Auth is automatic via WHOOP_EMAIL and WHOOP_PASSWORD in .env
+  - Auth is automatic via WHOOP_EMAIL and WHOOP_PASSWORD from environment variables
 `);
 }
 

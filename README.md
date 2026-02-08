@@ -1,20 +1,6 @@
 # whoop-cli
 
-Simple Bun-based WHOOP CLI with transparent auth and one core command: `stats`.
-
-## Setup
-
-```bash
-bun install
-cp .env.example .env
-```
-
-Set your WHOOP credentials in `.env`:
-
-```bash
-WHOOP_EMAIL=you@example.com
-WHOOP_PASSWORD=your-password
-```
+A simple Bun-based CLI for WHOOP ready to use with your favorite agent: transparent auth and clean daily stats output in JSON or human/agent-readable text.
 
 ## Install (Homebrew)
 
@@ -27,7 +13,23 @@ brew install muinmomin/whoop-cli/whoop
 
 Current binary target: macOS arm64 (Apple Silicon).
 
-## Commands
+## Usage
+
+Required environment variables:
+
+```bash
+WHOOP_EMAIL=you@example.com
+WHOOP_PASSWORD=your-password
+```
+
+Set them in your shell:
+
+```bash
+export WHOOP_EMAIL=you@example.com
+export WHOOP_PASSWORD=your-password
+```
+
+Commands:
 
 ```bash
 whoop auth
@@ -42,13 +44,6 @@ Notes:
 - `whoop stats` defaults to local today when `--date` is omitted.
 - Use `--json` or `--text` (not both).
 
-For local dev (without Homebrew install):
-
-```bash
-bun run auth
-bun run stats --text
-```
-
 ## What `stats` Returns
 
 - `day`: start/end
@@ -59,17 +54,33 @@ bun run stats --text
 
 ## Release Flow
 
-1. Bump `version` in `package.json`.
-2. Commit and push `main`.
-3. Create and push a matching tag, for example:
+```bash
+bun run release:patch
+```
+
+Other options:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+bun run release:minor
+bun run release:major
+bun run release -- 0.1.1
 ```
 
 What happens automatically:
 
+- Script runs typecheck.
+- Script bumps `package.json` version, creates a release commit, and creates a matching git tag.
+- Script pushes `main` with tags.
 - GitHub Actions builds `whoop-darwin-arm64.tar.gz`.
 - GitHub Release is created/updated for that tag.
 - `Formula/whoop.rb` is updated with the exact version + SHA256 and pushed to `main`.
+
+## Development
+
+```bash
+bun install
+export WHOOP_EMAIL=you@example.com
+export WHOOP_PASSWORD=your-password
+bun run auth
+bun run stats --text
+```

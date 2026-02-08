@@ -40,7 +40,7 @@ jobs:
       - name: Build Binary Tarball
         run: |
           mkdir -p dist
-          bun build --compile ./index.ts --outfile ./dist/whoop
+          bun build --compile --no-compile-autoload-dotenv ./index.ts --outfile ./dist/whoop
           tar -C dist -czf ./dist/whoop-darwin-arm64.tar.gz whoop
           shasum -a 256 ./dist/whoop-darwin-arm64.tar.gz | awk '{print $1}' > ./dist/whoop-darwin-arm64.sha256
 
