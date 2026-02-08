@@ -49,6 +49,7 @@ Notes:
 - `day`: start/end
 - `sleep`: score, hours, hours vs needed, hours needed, 30d hours avg, efficiency, RHR (value + 30d avg), HRV (value + 30d avg), bed/wake time, REM/deep/light
 - `steps`: value + 30d avg
+- `weight`: value + 30d avg
 - `workouts`: name, start, end, duration
 - `healthspan`: whoop age, years difference, pace of aging, next update
 

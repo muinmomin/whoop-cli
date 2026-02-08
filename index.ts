@@ -43,6 +43,10 @@ interface DailyStatsOutput {
     value: number | null;
     avg30d: number | null;
   };
+  weight: {
+    value: number | null;
+    avg30d: number | null;
+  };
   workouts: Array<{
     name: string;
     start: string | null;
@@ -434,6 +438,23 @@ function getKeyStats(overview: any): Record<string, KeyStat> {
   return stats;
 }
 
+function getWeightStat(keyStats: Record<string, KeyStat>): KeyStat | null {
+  const preferredKeys = ["WEIGHT", "BODY_WEIGHT", "WEIGHT_LBS", "WEIGHT_KG", "BODY_MASS"];
+  for (const key of preferredKeys) {
+    if (keyStats[key]) {
+      return keyStats[key];
+    }
+  }
+
+  for (const [trendKey, stat] of Object.entries(keyStats)) {
+    if (trendKey.toUpperCase().includes("WEIGHT")) {
+      return stat;
+    }
+  }
+
+  return null;
+}
+
 function getSleepActivityFromOverview(overview: any): any | null {
   const overviewPillar = getOverviewPillar(overview);
   if (!overviewPillar || !Array.isArray(overviewPillar.sections)) {
@@ -793,6 +814,11 @@ function formatDailyStatsText(output: DailyStatsOutput): string {
   lines.push(`  Avg 30d: ${formatNumber(output.steps.avg30d)}`);
   lines.push("");
 
+  lines.push("Weight");
+  lines.push(`  Value: ${formatNumber(output.weight.value, 1)}`);
+  lines.push(`  Avg 30d: ${formatNumber(output.weight.avg30d, 1)}`);
+  lines.push("");
+
   lines.push("Workouts");
   if (output.workouts.length === 0) {
     lines.push("  None");
@@ -840,6 +866,9 @@ async function buildDailyStats(client: WhoopClient, date: string): Promise<Daily
   const hrv30 = parseDisplayInt(keyStats.HRV?.thirtyDay);
   const stepsValue = parseDisplayInt(keyStats.STEPS?.current);
   const steps30 = parseDisplayInt(keyStats.STEPS?.thirtyDay);
+  const weightStat = getWeightStat(keyStats);
+  const weightValue = parseDisplayNumber(weightStat?.current);
+  const weight30 = parseDisplayNumber(weightStat?.thirtyDay);
   const sleepScore = getSleepScore(sleep);
   const sleepEfficiency = getSleepEfficiency(sleep);
   const sleepHoursVsNeeded = getSleepHoursVsNeeded(sleep);
@@ -872,6 +901,10 @@ async function buildDailyStats(client: WhoopClient, date: string): Promise<Daily
     steps: {
       value: stepsValue,
       avg30d: steps30,
+    },
+    weight: {
+      value: weightValue,
+      avg30d: weight30,
     },
     workouts,
     healthspan: {
