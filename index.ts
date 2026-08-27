@@ -106,7 +106,7 @@ class WhoopClient {
   }
 
   private async performLogin(): Promise<TokenData> {
-    const url = `${this.baseUrl}/auth-service/v3/whoop`;
+    const url = `${this.baseUrl}/auth-service/v3/whoop/`;
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -114,6 +114,11 @@ class WhoopClient {
         Accept: "*/*",
         "Content-Type": "application/x-amz-json-1.1",
         "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
+        "User-Agent":
+          "aws-sdk-swift/1.5.86 ua/2.1 api/cognito_identity_provider#1.5.86 os/ios#26.3.1 lang/swift#5.10 m/D,N,Z,b",
+        "amz-sdk-invocation-id": crypto.randomUUID(),
+        "amz-sdk-request": "attempt=1; max=1",
+        "Accept-Language": "en-US,en;q=0.9",
       },
       body: JSON.stringify({
         AuthParameters: {
